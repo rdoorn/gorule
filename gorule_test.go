@@ -11,17 +11,21 @@ import (
 var scripts = map[string][]byte{
 	"log": []byte(
 		`
-			response.StatusCode = 333
+			var tmp 200
+			/*response.StatusCode = 333
 			request.url.host = localhost
 			request.proto = "HTTP/3.0"
-			response.header.cache-control = "none"
-    #  if 1 == 2 {
-    #    log "hello world"
-    #  } elseif 2 == 3 {
-    #    log "hello elsif world"
-    #  } else {
-    #    log "hello else world"
-		#	}
+			response.header.cache-control = "none; bla"
+			response.header.x-custom = "script power"*/
+      if $(response.StatusCode) == $(tmp) {
+        log "hello world"
+			}
+			//request.url.path = "/bla/bla2/path"
+    /*  } elseif 2 == 3 {
+        log "hello elsif world"
+      } else {
+        log "hello else world"
+			}*/
 
     `,
 	),
@@ -35,9 +39,13 @@ var scripts = map[string][]byte{
 }
 
 func TestRules(t *testing.T) {
-	request, err := http.NewRequest("GET", "http://www.tweakers.net", nil)
+	request, err := http.NewRequest("GET", "http://www.ghostbox.org", nil)
 	client := &http.Client{}
 	response, err := client.Do(request)
+	/*response := &http.Response{
+		Header: make(http.Header),
+	}*/
+	//response.Header.Add("key", "value")
 	log.Printf("start request: %+v err:%s", request, err)
 
 	err = parse(
