@@ -9,41 +9,41 @@ import (
 )
 
 // Script is the container and keeper of script location and data
-type Script struct {
+type script struct {
 	input  []byte
 	offset int
 	line   int
 }
 
-// NewParser creates a new parser for script
-func NewParser(script []byte) *Script {
-	return &Script{
-		input:  script,
+// new creates a new parser for script
+func new(s []byte) *script {
+	return &script{
+		input:  s,
 		offset: 0,
 	}
 }
 
-// EOF returns EOF when the script is finished
-func (s *Script) EOF() bool {
+// eof returns eof when the script is finished
+func (s *script) eof() bool {
 	return s.offset >= len(s.input)
 }
 
-// Get gets the next byte and increses the offset
-func (s *Script) Get() byte {
+// get gets the next byte and increses the offset
+func (s *script) get() byte {
 	out := s.input[s.offset]
 	s.offset++
 	return out
 }
 
-// Word gets the next word and increses the offset
-func (s *Script) Word() (string, error) {
+// word gets the next word and increses the offset
+func (s *script) word() (string, error) {
 	word := []byte{}
 	add := 0
 	quoted := false
 
-	// continue till we reach EOF
-	for !s.EOF() {
-		g := s.Get()
+	// continue till we reach eof
+	for !s.eof() {
+		g := s.get()
 		add++
 
 		// on enter increse line count, and return recovered words so far (maybe take in to account \ ending of lines to continue)
@@ -85,15 +85,15 @@ func (s *Script) Word() (string, error) {
 		word = append(word, g)
 	}
 
-	// if we reached EOF, but have word, return the word first without error
+	// if we reached eof, but have word, return the word first without error
 	if len(word) > 0 {
 		return string(word), nil
 	}
-	return string(word), nil //, io.EOF
+	return string(word), nil //, io.eof
 }
 
 // eval evaluates 2 parameters in the script
-func (s *Script) eval(p1, v, p2 string) (bool, error) {
+func (s *script) eval(p1, v, p2 string) (bool, error) {
 	// test if p1 is number
 	if n1, err := strconv.Atoi(p1); err == nil {
 		// n2 is a number, so p2 should be a number too
@@ -137,12 +137,12 @@ func (s *Script) eval(p1, v, p2 string) (bool, error) {
 }
 
 // Line returns the line number where the script is at
-func (s *Script) Line() int {
+func (s *script) Line() int {
 	return s.line
 }
 
 // Parse parses the script, and changes the interfaces defined as input based on that
-func parse(i map[string]interface{}, script []byte) error {
+func Parse(i map[string]interface{}, script []byte) error {
 	//log.Printf("input interface: %+v", i)
 	//log.Printf("input script: %s", script)
 
@@ -153,16 +153,16 @@ func parse(i map[string]interface{}, script []byte) error {
 	}*/
 	//log.Printf("cleaned script: %s", script)
 
-	parser := NewParser(script)
+	parser := new(script)
 
 	executeFuncCount := 0
 	executeFuncMap := map[int]bool{0: true}
 	ifTracker := map[int]bool{0: false} // true if we had a match in the if statements at this level
 	run := true
 
-	// Continue till we reach the EOF
-	for !parser.EOF() {
-		word, err := parser.Word()
+	// Continue till we reach the eof
+	for !parser.eof() {
+		word, err := parser.word()
 		if err != nil {
 			return fmt.Errorf("could not parse script at line:%d error:%s", parser.Line(), err)
 		}
@@ -170,15 +170,15 @@ func parse(i map[string]interface{}, script []byte) error {
 		switch word {
 		// if and else means we validate the 3 words after that
 		case "if", "elseif":
-			param1, err := parser.Word()
+			param1, err := parser.word()
 			if err != nil {
 				return fmt.Errorf("expected value as 1st parameter to '%s' at line:%d error:%s", word, parser.Line(), err)
 			}
-			validator, err := parser.Word()
+			validator, err := parser.word()
 			if err != nil {
 				return fmt.Errorf("expected validator as 2nd parameter to '%s' at line:%d error:%s", word, parser.Line(), err)
 			}
-			param2, err := parser.Word()
+			param2, err := parser.word()
 			if err != nil {
 				return fmt.Errorf("expected value as 3st parameter to '%s' at line:%d error:%s", word, parser.Line(), err)
 			}
@@ -214,7 +214,7 @@ func parse(i map[string]interface{}, script []byte) error {
 
 		// log prints the next word (or string) to the output
 		case "log":
-			param1, err := parser.Word()
+			param1, err := parser.word()
 			if err != nil {
 				return fmt.Errorf("expected string as 1st parameter to 'log' at line:%d error:%s", parser.Line(), err)
 			}
@@ -240,12 +240,12 @@ func parse(i map[string]interface{}, script []byte) error {
 
 		case "var":
 
-			variable, err := parser.Word()
+			variable, err := parser.word()
 			if err != nil {
 				return fmt.Errorf("expected resouce variable as 1st parameter after '%s' at line:%d error:%s", word, parser.Line(), err)
 			}
 
-			value, err := parser.Word()
+			value, err := parser.word()
 			if err != nil {
 				return fmt.Errorf("expected set variable as 2st parameter after '%s' at line:%d error:%s", word, parser.Line(), err)
 			}
@@ -268,7 +268,7 @@ func parse(i map[string]interface{}, script []byte) error {
 		default:
 			// test if item is a editable variable
 
-			// ignore empty words (this generally happens at the EOF or dus to odd spaces between groups)
+			// ignore empty words (this generally happens at the eof or dus to odd spaces between groups)
 			if word == "" {
 				continue
 			}
@@ -277,11 +277,11 @@ func parse(i map[string]interface{}, script []byte) error {
 			// if a word contains a dot, we asume its a parameter, and we want to set or remove it based on the next parameter
 			if _, ok := i[word]; ok || strings.Contains(word, ".") {
 				param1 := word
-				validator, err := parser.Word()
+				validator, err := parser.word()
 				if err != nil {
 					return fmt.Errorf("expected validator as 1st parameter after variable '%s' at line:%d error:%s", word, parser.Line(), err)
 				}
-				param2, err := parser.Word()
+				param2, err := parser.word()
 				if err != nil {
 					return fmt.Errorf("expected variable as 2nd parameter after variable '%s' at line:%d error:%s", word, parser.Line(), err)
 				}

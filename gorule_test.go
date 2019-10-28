@@ -210,7 +210,7 @@ func TestScript(t *testing.T) {
 
 func runTestScript(t *testing.T, i map[string]interface{}, script []byte, result map[string]interface{}) {
 	//log.Printf("....... new test .......")
-	err := parse(i, script)
+	err := Parse(i, script)
 	assert.Nil(t, err, fmt.Sprintf("script:%s execution returned error", script))
 	if err == nil {
 		for testVariable, expected := range result {
