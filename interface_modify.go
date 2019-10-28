@@ -3,7 +3,6 @@ package gorule
 import (
 	"fmt"
 	"log"
-	"net/http"
 	"reflect"
 	"strconv"
 	"strings"
@@ -12,65 +11,20 @@ import (
 // modifyInterface changes the interface, based on the tree input to the set value
 func modifyInterface(mod interface{}, tree []string, value string) error {
 
-	t := reflect.TypeOf(mod)
-	v := reflect.ValueOf(mod)
+	log.Printf("modifyInterface mod:%T tree:%v value:%s", mod, tree, value)
+	_, _, v2, _ := getReflection(mod)
 
-	var v2 reflect.Value
-	var t2 reflect.Type
+	//log.Printf("Modifying %T ", mod)
+	switch v2.Kind() {
+	case reflect.String:
+	case reflect.Int:
+	default:
+		log.Printf("Kind: %v %T", v2.Kind(), v2.Kind())
+		return modifyInterfaceStruct(mod, tree, value)
 
-	// convert pointer to non-pointer
-	if v.Kind() == reflect.Ptr {
-		v2 = reflect.Indirect(v)
-		t2 = v2.Type()
-	} else {
-		v2 = v
-		t2 = t
 	}
-
 	// at this point we expect a struct of some kind
 	// loop through the fields of the struct
-	for i := 0; i < t2.NumField(); i++ {
-		field := t2.Field(i)
-		log.Printf("field.Name: %s match: %s", field.Name, tree[0])
-		if strings.EqualFold(field.Name, tree[0]) {
-
-			log.Printf("KIND: %+v", v.Elem().Field(i).Kind())
-			switch v.Elem().Field(i).Kind() {
-			case reflect.String:
-				log.Printf("--- set string %s to %s", v.Elem().Field(i), value)
-				v.Elem().Field(i).SetString(value)
-			case reflect.Int:
-				newValue, err := strconv.Atoi(value)
-				if err != nil {
-					return err
-				}
-				v.Elem().Field(i).SetInt(int64(newValue))
-			case reflect.Map:
-				m := v.Elem().Field(i).Interface()
-				// test if the value is empty, if so try to fill it
-				if reflect.DeepEqual(m, reflect.Zero(reflect.TypeOf(m)).Interface()) {
-
-					switch reflect.TypeOf(v.Elem().Field(i).Interface()).String() {
-					case "http.Header":
-						z := make(http.Header)
-						v.Elem().Field(i).Set(reflect.ValueOf(z))
-					default:
-						return fmt.Errorf("cannot create field of type: %s", v.Elem().Field(i).Kind().String())
-					}
-
-				}
-				err := modifyInterfaceMap(v.Elem().Field(i).Interface(), tree[1:], value)
-				return err
-			case reflect.Ptr:
-				return modifyInterface(v.Elem().Field(i).Interface(), tree[1:], value)
-			case reflect.Struct:
-				return modifyInterface(v.Elem().Field(i).Interface(), tree[1:], value)
-			default:
-				return fmt.Errorf("type '%s' has not been implemented yet in the interface modifier", v.Elem().Field(i).Kind())
-			}
-
-		}
-	}
 	// if we are a pointer, get the indirect type
 	/*if v.Kind() == reflect.Ptr {
 	  //t = reflect.TypeOf(reflect.Indirect(v))
@@ -89,6 +43,126 @@ func modifyInterface(mod interface{}, tree []string, value string) error {
 		case reflect.Bool:
 		  attribute.BOOL = aws.Bool(v.FieldByName(field.Name).Bool())
 	*/
+	return nil
+}
+
+func modifyInterfaceStruct(mod interface{}, tree []string, value string) error {
+	log.Printf("modifyInterfaceStruct mod:%T tree:%v value:%s", mod, tree, value)
+	t := reflect.TypeOf(mod)
+	v := reflect.ValueOf(mod)
+
+	var v2 reflect.Value
+	var t2 reflect.Type
+
+	// convert pointer to non-pointer
+	if v.Kind() == reflect.Ptr {
+		v2 = reflect.Indirect(v)
+		t2 = v2.Type()
+	} else {
+		v2 = v
+		t2 = t
+	}
+
+	for i := 0; i < t2.NumField(); i++ {
+		field := t2.Field(i)
+		log.Printf("field.Name: %s match: %s", field.Name, tree[0])
+		if strings.EqualFold(field.Name, tree[0]) {
+
+			log.Printf("KIND: %+v", v.Elem().Field(i).Kind())
+
+			switch v.Elem().Field(i).Kind() {
+			case reflect.Bool:
+				if strings.EqualFold(value, "true") {
+					v.Elem().Field(i).SetBool(true)
+				} else {
+					v.Elem().Field(i).SetBool(false)
+				}
+			case reflect.String:
+				v.Elem().Field(i).SetString(value)
+			case reflect.Int:
+				newValue, err := strconv.Atoi(value)
+				if err != nil {
+					return err
+				}
+				v.Elem().Field(i).SetInt(int64(newValue))
+			case reflect.Map:
+				log.Printf("modifyInterfaceStruct MAP")
+
+				// we only create MAP if they are zero
+				log.Printf("v2: %T", v.Elem().Field(i).Interface())
+				log.Printf("isEmpty: %t", isEmpty(v.Elem().Field(i)))
+				if isEmpty(v.Elem().Field(i)) {
+					modNew, err := createStruct(v.Elem().Field(i))
+					if err != nil {
+						return fmt.Errorf("modifyInterface failed to create instance for empty struct: %s", err)
+					}
+					log.Printf("modNew: %T", modNew)
+					log.Printf("IsSettable %+v", v.Elem().Field(i).CanSet())
+					v.Elem().Field(i).Set(reflect.ValueOf(modNew))
+
+				}
+
+				/* WORKS
+				m := v.Elem().Field(i).Interface()
+				// test if the value is empty, if so try to fill it
+				if reflect.DeepEqual(m, reflect.Zero(reflect.TypeOf(m)).Interface()) {
+
+					switch reflect.TypeOf(v.Elem().Field(i).Interface()).String() {
+					case "http.Header":
+						z := make(http.Header)
+						v.Elem().Field(i).Set(reflect.ValueOf(z))
+					default:
+						return fmt.Errorf("cannot create field of type: %s", v.Elem().Field(i).Kind().String())
+					}
+
+				}
+				*/
+				log.Printf("modifyInterfaceStruct Move in to Map")
+				err := modifyInterfaceMap(v.Elem().Field(i).Interface(), tree[1:], value)
+				return err
+			case reflect.Ptr:
+				log.Printf("modifyInterfaceStruct Move in to Ptr")
+
+				// we only create pointers if they are zero
+				log.Printf("v2: %T", v.Elem().Field(i).Interface())
+				log.Printf("isEmpty: %t", isEmpty(v.Elem().Field(i)))
+				if isEmpty(v.Elem().Field(i)) {
+					modNew, err := createStruct(v.Elem().Field(i))
+					if err != nil {
+						return fmt.Errorf("modifyInterface failed to create instance for empty struct: %s", err)
+					}
+					log.Printf("modNew: %T", modNew)
+					log.Printf("IsSettable %+v", v.Elem().Field(i).CanSet())
+					v.Elem().Field(i).Set(reflect.ValueOf(modNew))
+
+				}
+
+				/*v2 = reflect.Indirect(v)
+				log.Printf("PTR testing if kind is empty")
+				log.Printf("PTR v2: %T", v2.Elem().Field(i).Interface())
+				log.Printf("isEmpty: %t", isEmpty(v2.Elem().Field(i)))
+				if isEmpty(v2) {
+					modNew, err := createStruct(v2.Elem().Field(i))
+					if err != nil {
+						return fmt.Errorf("modifyInterface failed to create instance for empty struct: %s", err)
+					}
+					log.Printf("modNew: %T", modNew)
+					log.Printf("IsSettable %+v", v2.Elem().Field(i).CanSet())
+					v.Elem().Field(i).Set(reflect.ValueOf(modNew))
+
+				}*/
+
+				return modifyInterface(v.Elem().Field(i).Interface(), tree[1:], value)
+			case reflect.Struct:
+				log.Printf("modifyInterfaceStruct Move in to Struct")
+
+				return modifyInterface(v.Elem().Field(i).Interface(), tree[1:], value)
+			default:
+				return fmt.Errorf("modifyInterfaceStruct type '%s' has not been implemented yet in the interface modifier", v.Elem().Field(i).Kind())
+			}
+
+		}
+	}
 	return nil
 }
 
@@ -135,7 +209,7 @@ func modifyInterfaceMap(mod interface{}, tree []string, value string) error {
 				}
 			}
 		default:
-			return fmt.Errorf("Map of type: %T is not yet supported", e.Interface())
+			return fmt.Errorf("modifyInterfaceMap of type: %T is not yet supported", e.Interface())
 		}
 	}
 
@@ -210,31 +284,6 @@ func modifyInterfaceMap(mod interface{}, tree []string, value string) error {
 			v.SetMapIndex(reflect.ValueOf(tree[0]), reflect.ValueOf(e))
 			return nil
 
-			return nil
-
-			// we have a nil version of this item
-			log.Printf("map key check 5: %+v", v.Len())
-
-			//h := make(http.Header)
-			h := reflect.New(reflect.TypeOf(v))
-
-			v2 := reflect.ValueOf(h)
-			bla := []string{"bla"}
-			//h["test"] = bla
-			//newslice := reflect.New(reflect.SliceOf(t.Elem())).Interface()
-			//newslice := reflect.MakeSlice(reflect.SliceOf(t.Elem()), 1, 1)
-			log.Printf("vkind: %+v", v.Kind())
-			//v.SetMapIndex(reflect.ValueOf("x"), reflect.ValueOf([]string{"bla"}))
-			tmp := reflect.New(t.Elem()).Interface()
-			log.Printf("t: %+v %T", tmp, tmp)
-			log.Printf("t: %+v %T", v, v.Interface())
-			log.Printf("t: %+v %T", v2, v2.Interface())
-			v = v2
-			v.SetMapIndex(reflect.ValueOf("x"), reflect.ValueOf(bla))
-
-			//v.AddSlice()
-			log.Printf("Add new entry to map %+v", t.Elem())
-			log.Printf("Add new entry to map key %+v", t.Key())
 		}
 	}
 	return nil
@@ -295,64 +344,4 @@ func modifyInterfaceSlice(mod interface{}, tree []string, value string) error {
 	//}
 	//}
 	return nil
-}
-
-func getInterface(mod interface{}, tree []string) (interface{}, error) {
-
-	t := reflect.TypeOf(mod)
-	v := reflect.ValueOf(mod)
-
-	//log.Printf("t: %+v", t)
-	//log.Printf("v: %+v", v)
-
-	var v2 reflect.Value
-	var t2 reflect.Type
-	if v.Kind() == reflect.Ptr {
-		//t = reflect.TypeOf(reflect.Indirect(v))
-		v2 = reflect.Indirect(v)
-		t2 = v2.Type()
-	} else {
-		v2 = v
-		t2 = t
-	}
-
-	for i := 0; i < t2.NumField(); i++ {
-		field := t2.Field(i)
-		log.Printf("field.Name: %s match: %s", field.Name, tree[0])
-		if strings.EqualFold(field.Name, tree[0]) {
-
-			log.Printf("KIND: v.Elem:%+v kind:%+v", v.Elem(), v.Elem().Field(i).Kind())
-			switch v.Elem().Field(i).Kind() {
-			case reflect.String:
-				return v.Elem().Field(i).String(), nil
-			case reflect.Int:
-				return v.Elem().Field(i).Int(), nil
-			case reflect.Map:
-				/*log.Printf("Map keys: %+v", v.Elem().Field(i).MapKeys())
-				for _, e := range v.Elem().Field(i).MapKeys() {
-					v := v.Elem().Field(i).MapIndex(e)
-					switch t := v.Interface().(type) {
-					case int:
-						fmt.Println(e, t)
-					case string:
-						fmt.Println(e, t)
-					case bool:
-						fmt.Println(e, t)
-					default:
-						fmt.Println("not found")
-
-					}
-				}*/
-
-			case reflect.Ptr:
-				return getInterface(v.Elem().Field(i).Interface(), tree[1:])
-			case reflect.Struct:
-				return getInterface(v.Elem().Field(i).Interface(), tree[1:])
-			default:
-				return "", fmt.Errorf("type '%s' has not been implemented yet in the interface modifier", v.Elem().Field(i).Kind())
-			}
-
-		}
-	}
-	return "", fmt.Errorf("type '%s' has not been found in the resource '%T'", tree[0], t2.String())
 }
