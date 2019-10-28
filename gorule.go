@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-// script is the container and keeper of script location and data
+// Script is the container and keeper of script location and data
 type Script struct {
 	input  []byte
 	offset int
@@ -105,7 +105,6 @@ func (s *Script) eval(p1, v, p2 string) (bool, error) {
 
 		switch v {
 		case "==":
-			log.Printf("eval nr %d == %d", n1, n2)
 			return n1 == n2, nil
 		case "<=":
 			return n1 <= n2, nil
@@ -121,10 +120,17 @@ func (s *Script) eval(p1, v, p2 string) (bool, error) {
 	// so we are comparing strings
 	switch v {
 	case "==":
-		log.Printf("eval str %s == %s", p1, p2)
+		//log.Printf("eval str %s == %s", p1, p2)
 		return p1 == p2, nil
 	case "!=":
 		return p1 != p2, nil
+	case "regex":
+		//log.Printf("doing regex check of %s on %s", p2, p1)
+		re, err := regexp.Compile(p2)
+		if err != nil {
+			return false, err
+		}
+		return re.MatchString(p1), nil
 	default:
 		return false, fmt.Errorf("unknown string validator: %s", v)
 	}
@@ -137,20 +143,21 @@ func (s *Script) Line() int {
 
 // Parse parses the script, and changes the interfaces defined as input based on that
 func parse(i map[string]interface{}, script []byte) error {
-	log.Printf("input interface: %+v", i)
-	log.Printf("input script: %s", script)
+	//log.Printf("input interface: %+v", i)
+	//log.Printf("input script: %s", script)
 
 	script = stripComments(script)
 	/*script, err := parseVariables(i, script)
 	if err != nil {
 		return err
 	}*/
-	log.Printf("cleaned script: %s", script)
+	//log.Printf("cleaned script: %s", script)
 
 	parser := NewParser(script)
 
 	executeFuncCount := 0
 	executeFuncMap := map[int]bool{0: true}
+	ifTracker := map[int]bool{0: false} // true if we had a match in the if statements at this level
 	run := true
 
 	// Continue till we reach the EOF
@@ -180,6 +187,10 @@ func parse(i map[string]interface{}, script []byte) error {
 				continue
 			}
 
+			if word == "if" { // reset tracker on IF
+				ifTracker[executeFuncCount+1] = false
+			}
+
 			param1, err = parseVariableStrings(i, param1)
 			if err != nil {
 				return fmt.Errorf("error parsing value as 1st parameter to '%s' at line:%d error:%s", word, parser.Line(), err)
@@ -194,9 +205,12 @@ func parse(i map[string]interface{}, script []byte) error {
 			if err != nil {
 				return fmt.Errorf("failed to validate '%s' at line:%d error:%s", word, parser.Line(), err)
 			}
-			log.Printf("result: %t", result)
+			//log.Printf("result: %t", result)
 
 			executeFuncMap[executeFuncCount+1] = result
+			if result == true {
+				ifTracker[executeFuncCount+1] = true
+			}
 
 		// log prints the next word (or string) to the output
 		case "log":
@@ -212,7 +226,7 @@ func parse(i map[string]interface{}, script []byte) error {
 		// else means we can do the oposite of the previous block
 		case "else":
 			// take previous evaluation, and negate that
-			executeFuncMap[executeFuncCount+1] = !executeFuncMap[executeFuncCount+1]
+			executeFuncMap[executeFuncCount+1] = !ifTracker[executeFuncCount+1]
 
 		// open curley brackets defines the start of a block, which we may or may not execute
 		case "{":
@@ -244,7 +258,7 @@ func parse(i map[string]interface{}, script []byte) error {
 				return fmt.Errorf("variable resource with the name '%s' already exists at line:%d", variable, parser.Line())
 			}
 
-			log.Printf("setting interface variable: %s to %s", variable, value)
+			//log.Printf("setting interface variable: %s to %s", variable, value)
 
 			i[variable] = value
 
@@ -259,12 +273,7 @@ func parse(i map[string]interface{}, script []byte) error {
 				continue
 			}
 
-			log.Printf("word: %s", word)
-			if _, ok := i[word]; ok {
-
-				log.Printf("OK word: %s", word)
-			}
-			log.Printf("word: %s", word)
+			//log.Printf("word: %s", word)
 			// if a word contains a dot, we asume its a parameter, and we want to set or remove it based on the next parameter
 			if _, ok := i[word]; ok || strings.Contains(word, ".") {
 				param1 := word
@@ -288,7 +297,12 @@ func parse(i map[string]interface{}, script []byte) error {
 
 					switch validator {
 					case "=":
-						log.Printf("Set entry: %s to %s", param1, param2)
+						//log.Printf("Set entry: %s to %s", param1, param2)
+						if len(resource) == 1 {
+							i[resource[0]] = param2
+							//log.Printf("Set ---- %s to %s ", resource[0], i[resource[0]])
+							continue
+						}
 						err := modifyInterface(r, resource[1:], param2)
 						if err != nil {
 							return fmt.Errorf("error modifing '%s' to '%s' at line:%d error:%s", param1, param2, parser.Line(), err)
@@ -334,31 +348,6 @@ func parseVariableStrings(i map[string]interface{}, script string) (string, erro
 	return script, err
 }
 
-// parseVariables does a regex replace of all $(parameters) to their "value" in Byte
-// you can use this to transform the entire script, but that defeats the lexer logic
-/*
-func parseVariables(i map[string]interface{}, script []byte) ([]byte, error) {
-	var err error
-	r := regexp.MustCompile(`\$\(([a-zA-Z.-_]+)\)`)
-	script = r.ReplaceAllFunc(script, func(m []byte) []byte {
-		variable := m[2 : len(m)-1]
-		var result string
-		result, err = translateVariable(i, string(variable))
-		if err != nil {
-			return variable
-		}
-		// we are a string that consists of multiple words
-		if strings.Contains(result, " ") {
-			b := append([]byte("\""), []byte(result)...)
-			b = append(b, '"')
-			return b
-		}
-		return []byte(result)
-	})
-	return script, err
-}
-*/
-
 // translateVariable translates a string to the variable in the interfaces
 func translateVariable(i map[string]interface{}, variable string) (string, error) {
 	resource := strings.Split(variable, ".")
@@ -378,39 +367,3 @@ func translateVariable(i map[string]interface{}, variable string) (string, error
 	}
 	return "", fmt.Errorf("Unknown resource '%s' used in variable: %s", resource[0], variable)
 }
-
-/*
-func translateVariable(i map[string]interface{}, variable string) (string, error) {
-	charVariable := variable[:][0]
-	log.Printf("v: %s 1", variable)
-	if (charVariable > 'a' || charVariable < 'z') && (charVariable > 'A' || charVariable < 'Z') {
-		log.Printf("v: %s 2", variable)
-		resource := strings.Split(variable, ".")
-		if len(resource) == 1 {
-			log.Printf("v: %s 3", variable)
-			return variable, nil
-		}
-		if r, ok := i[resource[0]]; ok {
-			log.Printf("v: %s 4", variable)
-			result, err := getInterface(r, resource[1:])
-			if err != nil {
-				return "", fmt.Errorf("error translating variable '%s of resource '%s': %s", variable, resource[0], err)
-			}
-			log.Printf("x temp %T", result)
-			log.Printf("x temp %v", reflect.ValueOf(result))
-			//log.Printf("x temp %v", result.(int))
-			switch result.(type) {
-			case string:
-				return result.(string), nil
-			case int:
-				return strconv.Itoa(result.(int)), nil
-			case int64:
-				return strconv.Itoa(int(result.(int64))), nil
-			}
-		} else {
-			return "", fmt.Errorf("Unknown resource '%s' used in variable: %s", resource[0], variable)
-		}
-	}
-	return variable, nil
-}
-*/

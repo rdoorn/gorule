@@ -4,7 +4,6 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
-	"log"
 	"net/http"
 	"net/url"
 	"reflect"
@@ -13,7 +12,6 @@ import (
 func isEmpty(t reflect.Value) bool {
 	m := t.Interface()
 	if reflect.DeepEqual(m, reflect.Zero(reflect.TypeOf(m)).Interface()) {
-		log.Printf("value is zeo")
 		return true
 	}
 	return false
@@ -31,12 +29,8 @@ func createStruct(t reflect.Value) (interface{}, error) {
 		z := &tls.ConnectionState{}
 		return z, nil
 	case "[]*x509.Certificate":
-		//var v []*certificate
-		//z := &x509.Certificate{}
-		//z := make([]*x509.Certificate, 1)
-		//z = append(z, &x509.Certificate{})
 		z := []*x509.Certificate{
-			&x509.Certificate{Signature: []byte("aa:bb:cc")},
+			&x509.Certificate{},
 		}
 		return z, nil
 	case "[]uint8":

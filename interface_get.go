@@ -2,7 +2,6 @@ package gorule
 
 import (
 	"fmt"
-	"log"
 	"reflect"
 	"strconv"
 	"strings"
@@ -10,8 +9,11 @@ import (
 
 // getInterface gets the value of an interface based on tree
 func getInterface(mod interface{}, tree []string) (interface{}, error) {
+	if mod == nil {
+		return "", fmt.Errorf("getInterface resource does not exist")
+	}
 	_, _, v2, _ := getReflection(mod)
-	log.Printf("getInterface mod:%T type:%+v tree:%v", v2.Interface(), v2.Kind(), tree)
+	//log.Printf("getInterface mod:%T type:%+v tree:%v", v2.Interface(), v2.Kind(), tree)
 
 	switch v2.Kind() {
 	case reflect.String:
@@ -28,7 +30,7 @@ func getInterface(mod interface{}, tree []string) (interface{}, error) {
 		return getInterfaceMap(mod, tree)
 	case reflect.Slice:
 		switch fmt.Sprintf("%T", mod) {
-		case "[]uint8": // []byte
+		case uint8slice: // []byte
 			x := mod.([]byte)
 			return string(x), nil
 		default:
@@ -41,8 +43,8 @@ func getInterface(mod interface{}, tree []string) (interface{}, error) {
 
 // getInterfaceStruct gets the value of an interface based on tree of a Structure
 func getInterfaceStruct(mod interface{}, tree []string) (interface{}, error) {
-	v, _, v2, t2 := getReflection(mod)
-	log.Printf("getInterfaceStruct mod:%T type:%+v tree:%v", v2.Interface(), v2.Kind(), tree)
+	v, _, _, t2 := getReflection(mod)
+	//log.Printf("getInterfaceStruct mod:%T type:%+v tree:%v", v2.Interface(), v2.Kind(), tree)
 	// Loop through all field of the structure
 	for i := 0; i < t2.NumField(); i++ {
 		field := t2.Field(i)
@@ -56,11 +58,11 @@ func getInterfaceStruct(mod interface{}, tree []string) (interface{}, error) {
 // getInterfaceMap gets the value of an interface based on tree of a Map
 func getInterfaceMap(mod interface{}, tree []string) (interface{}, error) {
 	_, _, v2, t2 := getReflection(mod)
-	log.Printf("getInterfaceMap mod:%T type:%+v tree:%v", v2.Interface(), v2.Kind(), tree)
+	//log.Printf("getInterfaceMap mod:%T type:%+v tree:%v", v2.Interface(), v2.Kind(), tree)
 
 	// Loop through all field of the structure
 	for _, i := range v2.MapKeys() {
-		log.Printf("map match %s, %s", v2.MapIndex(i).Interface(), tree[0])
+		//log.Printf("map match %s, %s", v2.MapIndex(i).Interface(), tree[0])
 		if strings.EqualFold(i.String(), tree[0]) {
 			return getInterface(v2.MapIndex(i).Interface(), tree[1:])
 		}
@@ -71,7 +73,7 @@ func getInterfaceMap(mod interface{}, tree []string) (interface{}, error) {
 // getInterfaceSlice gets the value of an interface based on tree of a Slice
 func getInterfaceSlice(mod interface{}, tree []string) (interface{}, error) {
 	_, _, v2, t2 := getReflection(mod)
-	log.Printf("getInterfaceSlice mod:%T type:%+v tree:%v", v2.Interface(), v2.Kind(), tree)
+	//log.Printf("getInterfaceSlice mod:%T type:%+v tree:%v", v2.Interface(), v2.Kind(), tree)
 
 	// Loop through all field of the structure
 	if len(tree) == 0 {
