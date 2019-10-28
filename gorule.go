@@ -244,6 +244,8 @@ func parse(i map[string]interface{}, script []byte) error {
 				return fmt.Errorf("variable resource with the name '%s' already exists at line:%d", variable, parser.Line())
 			}
 
+			log.Printf("setting interface variable: %s to %s", variable, value)
+
 			i[variable] = value
 
 			// only execute if we find this inside a runnable block
@@ -257,8 +259,14 @@ func parse(i map[string]interface{}, script []byte) error {
 				continue
 			}
 
+			log.Printf("word: %s", word)
+			if _, ok := i[word]; ok {
+
+				log.Printf("OK word: %s", word)
+			}
+			log.Printf("word: %s", word)
 			// if a word contains a dot, we asume its a parameter, and we want to set or remove it based on the next parameter
-			if strings.Contains(word, ".") {
+			if _, ok := i[word]; ok || strings.Contains(word, ".") {
 				param1 := word
 				validator, err := parser.Word()
 				if err != nil {

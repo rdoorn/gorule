@@ -10,13 +10,15 @@ import (
 
 // getInterface gets the value of an interface based on tree
 func getInterface(mod interface{}, tree []string) (interface{}, error) {
-	_, _, v2, t2 := getReflection(mod)
+	_, _, v2, _ := getReflection(mod)
 	log.Printf("getInterface mod:%T type:%+v tree:%v", v2.Interface(), v2.Kind(), tree)
 
 	switch v2.Kind() {
 	case reflect.String:
 		return v2.String(), nil
 	case reflect.Int:
+		return int(v2.Int()), nil
+	case reflect.Int64:
 		return v2.Int(), nil
 	case reflect.Bool:
 		return v2.Bool(), nil
@@ -25,9 +27,15 @@ func getInterface(mod interface{}, tree []string) (interface{}, error) {
 	case reflect.Map:
 		return getInterfaceMap(mod, tree)
 	case reflect.Slice:
-		return getInterfaceSlice(mod, tree)
+		switch fmt.Sprintf("%T", mod) {
+		case "[]uint8": // []byte
+			x := mod.([]byte)
+			return string(x), nil
+		default:
+			return getInterfaceSlice(mod, tree)
+		}
 	default:
-		return "", fmt.Errorf("getInterface type '%s' has not been found in the resource '%T'", tree[0:], t2.String())
+		return "", fmt.Errorf("getInterface type '%s' has not been found in the resource '%T'", tree[0:], v2.Interface())
 	}
 }
 

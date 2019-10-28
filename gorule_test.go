@@ -29,15 +29,14 @@ var scriptTests = []scriptTest{
 			"request.proto": "HTTP/1.9",
 		},
 	},
-
 	// set bool
 	scriptTest{
 		interfaces: map[string]interface{}{
 			"request": &http.Request{},
 		},
 		script: []byte(`
-			request.close = true
-		`),
+				request.close = true
+			`),
 		result: map[string]interface{}{
 			"request.close": true, // false by default
 		},
@@ -49,8 +48,8 @@ var scriptTests = []scriptTest{
 			"request": &http.Request{},
 		},
 		script: []byte(`
-			request.url.path = "/status"
-		`),
+					request.url.path = "/status"
+				`),
 		result: map[string]interface{}{
 			"request.url.path": "/status",
 		},
@@ -62,8 +61,8 @@ var scriptTests = []scriptTest{
 			"request": &http.Request{},
 		},
 		script: []byte(`
-			request.header.x-custom = "hello world"
-		`),
+				request.header.x-custom = "hello world"
+			`),
 		result: map[string]interface{}{
 			"request.header.x-custom": "hello world",
 		},
@@ -75,10 +74,57 @@ var scriptTests = []scriptTest{
 			"request": &http.Request{},
 		},
 		script: []byte(`
-			request.contentlength = 10
-		`),
+					request.contentlength = 10
+				`),
 		result: map[string]interface{}{
-			"request.contentlength": 10, // default is 0
+			"request.contentlength": int64(10), // default is 0
+		},
+	},
+
+	// set int (statuscode
+	scriptTest{
+		interfaces: map[string]interface{}{
+			"response": &http.Response{},
+		},
+		script: []byte(`
+					response.statuscode = 456
+				`),
+		result: map[string]interface{}{
+			"response.statuscode": int(456), // default is 0
+		},
+	},
+
+	// set tls client certificate
+	scriptTest{
+		interfaces: map[string]interface{}{
+			"request": &http.Request{},
+		},
+		script: []byte(`
+					request.tls.peercertificates.0.Signature = "11:22:33:44:55:66:77:88"
+				`),
+		result: map[string]interface{}{
+			"request.tls.peercertificates.0.Signature": "11:22:33:44:55:66:77:88",
+		},
+	},
+
+	// set tls client certificate
+	scriptTest{
+		interfaces: map[string]interface{}{},
+		script: []byte(`
+					var testvalue 1
+					if $(testvalue) == 1 {
+						//var resultvalue 1
+						log "got 1"
+					} elseif $(testvalue) == 2 {
+						//var resultvalue 2
+						log "got 2"
+					} else {
+						//var resultvalue 3
+						log "got 3"
+					}
+				`),
+		result: map[string]interface{}{
+			"resultValue": 1,
 		},
 	},
 }

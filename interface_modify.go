@@ -8,214 +8,155 @@ import (
 	"strings"
 )
 
-// modifyInterface changes the interface, based on the tree input to the set value
+// modifyInterface gets the value of an interface based on tree
 func modifyInterface(mod interface{}, tree []string, value string) error {
+	v, _, v2, _ := getReflection(mod)
+	log.Printf("modifyInterface mod:%T type:%+v tree:%v value:%s", v2.Interface(), v2.Kind(), tree, value)
 
-	log.Printf("modifyInterface mod:%T tree:%v value:%s", mod, tree, value)
-	_, _, v2, _ := getReflection(mod)
-
-	//log.Printf("Modifying %T ", mod)
 	switch v2.Kind() {
 	case reflect.String:
-	case reflect.Int:
-	default:
-		log.Printf("Kind: %v %T", v2.Kind(), v2.Kind())
-		return modifyInterfaceStruct(mod, tree, value)
+		log.Printf("mod: %+v set:%t", mod, v.CanSet())
+		log.Printf("mod: %+v set:%t", mod, v.CanAddr())
 
+		v.SetString(value)
+		return nil
 	}
-	// at this point we expect a struct of some kind
-	// loop through the fields of the struct
-	// if we are a pointer, get the indirect type
-	/*if v.Kind() == reflect.Ptr {
-	  //t = reflect.TypeOf(reflect.Indirect(v))
-	  v = reflect.Indirect(v)
-	  t = v.Type()
-	}*/
-	/*
-		case reflect.Float64:
-		  attribute.S = aws.String(strconv.FormatFloat(v.FieldByName(field.Name).Float(), 'f', 10, 64))
-		case reflect.Int:
-		  attribute.N = aws.String(strconv.FormatInt(v.FieldByName(field.Name).Int(), 10))
-		case reflect.Uint64:
-		  attribute.N = aws.String(strconv.FormatUint(v.FieldByName(field.Name).Uint(), 10))
-		case reflect.Int64:
-		  attribute.N = aws.String(strconv.FormatInt(v.FieldByName(field.Name).Int(), 10))
-		case reflect.Bool:
-		  attribute.BOOL = aws.Bool(v.FieldByName(field.Name).Bool())
-	*/
-	return nil
+
+	if len(tree) == 0 {
+		modifyValue(v2, tree, value)
+	}
+
+	switch v2.Kind() {
+	//	case reflect.String:
+
+	/*case reflect.String:
+		v2.SetString(value)
+		return nil
+	case reflect.Int:
+		return nil
+	case reflect.Bool:
+		if strings.EqualFold(value, "true") {
+			v2.SetBool(true)
+		} else {
+			v2.SetBool(false)
+		}
+		return nil*/
+	case reflect.Struct:
+		return modifyInterfaceStruct(mod, tree, value)
+	case reflect.Map:
+		return modifyInterfaceMap(mod, tree, value)
+	case reflect.Slice:
+		return modifyInterfaceSlice(mod, tree, value)
+	default:
+		return modifyValue(v2, tree, value)
+		//return fmt.Errorf("modifyInterface type '%s' has not been found in the resource '%T'", tree[0:], t2.String())
+	}
 }
 
-func modifyInterfaceStruct(mod interface{}, tree []string, value string) error {
-	log.Printf("modifyInterfaceStruct mod:%T tree:%v value:%s", mod, tree, value)
-	t := reflect.TypeOf(mod)
-	v := reflect.ValueOf(mod)
+// modifyInterface gets the value of an interface based on tree
+func modifyValue(v reflect.Value, tree []string, value string) error {
+	//_, _, v2, t2 := getReflection(mod)
 
 	var v2 reflect.Value
-	var t2 reflect.Type
 
 	// convert pointer to non-pointer
 	if v.Kind() == reflect.Ptr {
 		v2 = reflect.Indirect(v)
-		t2 = v2.Type()
+		//t2 = v2.Type()
 	} else {
 		v2 = v
-		t2 = t
+		//t2 = t
 	}
+	log.Printf("modifyValue mod:%T type:%+v tree:%v value:%s", v2.Interface(), v2.Kind(), tree, value)
 
-	for i := 0; i < t2.NumField(); i++ {
-		field := t2.Field(i)
-		log.Printf("field.Name: %s match: %s", field.Name, tree[0])
-		if strings.EqualFold(field.Name, tree[0]) {
-
-			log.Printf("KIND: %+v", v.Elem().Field(i).Kind())
-
-			switch v.Elem().Field(i).Kind() {
-			case reflect.Bool:
-				if strings.EqualFold(value, "true") {
-					v.Elem().Field(i).SetBool(true)
-				} else {
-					v.Elem().Field(i).SetBool(false)
-				}
-			case reflect.String:
-				v.Elem().Field(i).SetString(value)
-			case reflect.Int:
-				newValue, err := strconv.Atoi(value)
-				if err != nil {
-					return err
-				}
-				v.Elem().Field(i).SetInt(int64(newValue))
-			case reflect.Map:
-				log.Printf("modifyInterfaceStruct MAP")
-
-				// we only create MAP if they are zero
-				log.Printf("v2: %T", v.Elem().Field(i).Interface())
-				log.Printf("isEmpty: %t", isEmpty(v.Elem().Field(i)))
-				if isEmpty(v.Elem().Field(i)) {
-					modNew, err := createStruct(v.Elem().Field(i))
-					if err != nil {
-						return fmt.Errorf("modifyInterface failed to create instance for empty struct: %s", err)
-					}
-					log.Printf("modNew: %T", modNew)
-					log.Printf("IsSettable %+v", v.Elem().Field(i).CanSet())
-					v.Elem().Field(i).Set(reflect.ValueOf(modNew))
-
-				}
-
-				/* WORKS
-				m := v.Elem().Field(i).Interface()
-				// test if the value is empty, if so try to fill it
-				if reflect.DeepEqual(m, reflect.Zero(reflect.TypeOf(m)).Interface()) {
-
-					switch reflect.TypeOf(v.Elem().Field(i).Interface()).String() {
-					case "http.Header":
-						z := make(http.Header)
-						v.Elem().Field(i).Set(reflect.ValueOf(z))
-					default:
-						return fmt.Errorf("cannot create field of type: %s", v.Elem().Field(i).Kind().String())
-					}
-
-				}
-				*/
-				log.Printf("modifyInterfaceStruct Move in to Map")
-				err := modifyInterfaceMap(v.Elem().Field(i).Interface(), tree[1:], value)
-				return err
-			case reflect.Ptr:
-				log.Printf("modifyInterfaceStruct Move in to Ptr")
-
-				// we only create pointers if they are zero
-				log.Printf("v2: %T", v.Elem().Field(i).Interface())
-				log.Printf("isEmpty: %t", isEmpty(v.Elem().Field(i)))
-				if isEmpty(v.Elem().Field(i)) {
-					modNew, err := createStruct(v.Elem().Field(i))
-					if err != nil {
-						return fmt.Errorf("modifyInterface failed to create instance for empty struct: %s", err)
-					}
-					log.Printf("modNew: %T", modNew)
-					log.Printf("IsSettable %+v", v.Elem().Field(i).CanSet())
-					v.Elem().Field(i).Set(reflect.ValueOf(modNew))
-
-				}
-
-				/*v2 = reflect.Indirect(v)
-				log.Printf("PTR testing if kind is empty")
-				log.Printf("PTR v2: %T", v2.Elem().Field(i).Interface())
-				log.Printf("isEmpty: %t", isEmpty(v2.Elem().Field(i)))
-				if isEmpty(v2) {
-					modNew, err := createStruct(v2.Elem().Field(i))
-					if err != nil {
-						return fmt.Errorf("modifyInterface failed to create instance for empty struct: %s", err)
-					}
-					log.Printf("modNew: %T", modNew)
-					log.Printf("IsSettable %+v", v2.Elem().Field(i).CanSet())
-					v.Elem().Field(i).Set(reflect.ValueOf(modNew))
-
-				}*/
-
-				return modifyInterface(v.Elem().Field(i).Interface(), tree[1:], value)
-			case reflect.Struct:
-				log.Printf("modifyInterfaceStruct Move in to Struct")
-
-				return modifyInterface(v.Elem().Field(i).Interface(), tree[1:], value)
-			default:
-				return fmt.Errorf("modifyInterfaceStruct type '%s' has not been implemented yet in the interface modifier", v.Elem().Field(i).Kind())
-			}
-
+	switch v2.Kind() {
+	case reflect.String:
+		v2.SetString(value)
+		return nil
+	case reflect.Int:
+		i, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("failed to convert '%s' to int: %s", value, err)
 		}
+		v2.SetInt(int64(i))
+		return nil
+	case reflect.Int64:
+		i, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("failed to convert '%s' to int: %s", value, err)
+		}
+		v2.SetInt(int64(i))
+		return nil
+	case reflect.Bool:
+		if strings.EqualFold(value, "true") {
+			v2.SetBool(true)
+		} else {
+			v2.SetBool(false)
+		}
+		return nil
+	case reflect.Struct:
+		return modifyInterfaceStruct(v.Interface(), tree, value)
+	case reflect.Map:
+		return modifyInterfaceMap(v.Interface(), tree, value)
+	case reflect.Slice:
+		log.Printf("setting slice of: %T", v.Interface())
+		log.Printf("setting slice of: %s", v.Kind())
+		switch fmt.Sprintf("%T", v.Interface()) {
+		case "[]uint8": // []byte
+			b := []uint8(value)
+			v2.Set(reflect.ValueOf(b))
+			return nil
+		default:
+			return modifyInterfaceSlice(v.Interface(), tree, value)
+		}
+	default:
+		return fmt.Errorf("modifyValue type '%s' has not been found in the resource '%T'", tree[0:], v.Interface())
 	}
-	return nil
 }
 
-func modifyInterfaceMap(mod interface{}, tree []string, value string) error {
+// modifyInterfaceStruct gets the value of an interface based on tree of a Structure
+func modifyInterfaceStruct(mod interface{}, tree []string, value string) error {
+	v, _, v2, t2 := getReflection(mod)
+	log.Printf("modifyInterfaceStruct mod:%T type:%+v tree:%v value:%s", v2.Interface(), v2.Kind(), tree, value)
+	// Loop through all field of the structure
+	for i := 0; i < t2.NumField(); i++ {
+		field := t2.Field(i)
+		log.Printf("modifyInterfaceStruct matching %s with %s", field.Name, tree[0])
+		if strings.EqualFold(field.Name, tree[0]) {
 
-	log.Printf("Is Zero?, %t", reflect.DeepEqual(mod, reflect.Zero(reflect.TypeOf(mod)).Interface()))
-	t := reflect.TypeOf(mod)
-	v := reflect.ValueOf(mod)
-
-	log.Printf("Map keys: %+v searching for: %s setting: %s", v.MapKeys(), tree[1:], value)
-
-	//log.Printf("MAP t: %+v", t)
-	//log.Printf("MAP v: %+v", v)
-
-	log.Printf("map key check 0")
-	for _, e := range v.MapKeys() {
-		log.Printf("map key check 1")
-		switch e.Interface().(type) {
-		case string:
-			log.Printf("map key check 2")
-			if strings.EqualFold(e.String(), tree[0]) {
-				log.Printf("modifying key: %s", e)
-				m := v.MapIndex(e)
-				switch m.Interface().(type) {
-				case int:
-					fmt.Println(e, t)
-				case []string:
-					// headers have an [][]string setup in go, generally they are all [0], so lets assume for now
-					//log.Printf("map field before: %+v", v.MapIndex(e).Interface())
-					err := modifyInterfaceSlice(m.Interface(), tree[1:], value)
-					//log.Printf("map field after: %+v", v.MapIndex(e).Interface())
-					//log.Printf("map field keys after: %+v", v.MapKeys())
-					return err
-
-					//v.Elem().Field(i).MapIndex(e).Field(0).SetString(value)
-					//fmt.Println(e, t)
-				case string:
-					fmt.Println(e, t)
-				case bool:
-					fmt.Println(e, t)
-				default:
-					log.Printf("not found: %+v %T", m, m)
-
+			switch v.Elem().Field(i).Kind() {
+			case reflect.Map, reflect.Slice, reflect.Ptr:
+				// we only create a new element of this type if they are zero
+				if isEmpty(v.Elem().Field(i)) {
+					modNew, err := createStruct(v.Elem().Field(i))
+					if err != nil {
+						return fmt.Errorf("modifyInterfaceStruct failed to create instance for empty struct: %s", err)
+					}
+					log.Printf("createStruct: set %T to %+v", v.Elem().Field(i).Interface(), modNew)
+					v.Elem().Field(i).Set(reflect.ValueOf(modNew))
 				}
+
 			}
-		default:
-			return fmt.Errorf("modifyInterfaceMap of type: %T is not yet supported", e.Interface())
+
+			return modifyValue(v.Elem().Field(i), tree[1:], value)
 		}
 	}
+	return fmt.Errorf("modifyInterfaceStruct type '%s' has not been found in the resource '%T'", tree[0], v2.Interface())
+}
 
-	log.Printf("map key check 4")
-	// we have not adjusted anything yet, so create a new entry
+// modifyInterfaceMap gets the value of an interface based on tree of a Map
+func modifyInterfaceMap(mod interface{}, tree []string, value string) error {
+	v, t, v2, _ := getReflection(mod)
+	log.Printf("modifyInterfaceMap mod:%T type:%+v tree:%v value:%s", v2.Interface(), v2.Kind(), tree, value)
 
+	// Loop through all field of the structure
+	for _, i := range v2.MapKeys() {
+		log.Printf("map match %s, %s", v2.MapIndex(i).Interface(), tree[0])
+		if strings.EqualFold(i.String(), tree[0]) {
+			return modifyValue(v2.MapIndex(i), tree[1:], value)
+		}
+	}
+	// if element not found in MAP, then we add it
 	// get the kind of the map key
 	log.Printf("map key kind is: %s", t.Key().Kind())
 	switch t.Key().Kind() {
@@ -225,51 +166,6 @@ func modifyInterfaceMap(mod interface{}, tree []string, value string) error {
 		switch t.Elem().Kind() {
 		case reflect.Slice:
 			log.Printf("map int is: %+v, %+v LEN:%d", t, t, v.Len())
-			if v.Len() == 0 {
-				switch t.String() {
-				case "http.Header":
-					/*
-						v := reflect.ValueOf(z)
-						t = reflect.TypeOf(z)
-					*/
-
-					/*z := make(map[string][]string)
-					mod = unsafe.Pointer(&z)
-					v = reflect.ValueOf(mod)
-					t = reflect.TypeOf(mod)*/
-
-					//myType := reflect.TypeOf(z)
-					//slice := reflect.MakeSlice(reflect.SliceOf(myType), 1, 1)
-					//log.Printf("slice is now: %s %T", slice, slice)
-					//log.Printf("slice elem is now: %s %T", t.Elem(), t.Elem())
-					// Create a pointer to a slice value and set it to the slice
-					//t.Elem().Set(slice)
-					//}
-					//z := make(http.Header)
-					//log.Printf("T is now: %s %T", t, t)
-					//z := reflect.Indirect(reflect.New(t))
-					//log.Printf("Z is now: %+v %T", z, z)
-					//t2 := reflect.TypeOf(z)
-					//v = reflect.Indirect(reflect.New(t))
-					//v2 := reflect.ValueOf(z)
-					//v.Set(v2)
-					//v2 := reflect.ValueOf(z)
-					//log.Printf("map2 key kind is: %s", t2.Key().Kind())
-					//log.Printf("map2 value kind is: %s", t2.Elem())
-					//log.Printf("map2 int is: %+v, %+v", t2, t2)
-					//v2 := reflect.ValueOf(z)
-					//obj := reflect.Indirect(v)
-					//obj.Set(v)
-
-					//log.Printf("can addr %t", v.CanAddr())
-					//log.Printf("can set %t", v.CanSet())
-
-					//log.Printf("ptr of mod: %+v", &mod)
-					//log.Printf("ptr of z: %+v", interface{ z })
-					//mod = z
-				}
-			}
-
 			// adding key to exising map
 			log.Printf("adding key to existing map of len:%d", v.Len())
 
@@ -286,62 +182,36 @@ func modifyInterfaceMap(mod interface{}, tree []string, value string) error {
 
 		}
 	}
-	return nil
+
+	return fmt.Errorf("modifyInterfaceMap type '%s' has not been found in the resource '%T'", tree[0], v2.Interface())
 }
 
+// modifyInterfaceSlice gets the value of an interface based on tree of a Slice
 func modifyInterfaceSlice(mod interface{}, tree []string, value string) error {
-	//t := reflect.TypeOf(mod)
-	v := reflect.ValueOf(mod)
+	_, _, v2, _ := getReflection(mod)
+	log.Printf("modifyInterfaceSlice mod:%T type:%+v tree:%v value:%s", v2.Interface(), v2.Kind(), tree, value)
 
-	log.Printf("Slice keys: %+v searching for: %s setting: %s", v.Len(), tree, value)
+	// Loop through all field of the structure
 	if len(tree) == 0 {
 		tree = append(tree, "0")
 	}
-
-	index, err := strconv.Atoi(tree[0])
+	treeInt, err := strconv.Atoi(tree[0])
 	if err != nil {
-		return fmt.Errorf("expected index number for slice but got:%s, error:%s", tree, err)
+		return fmt.Errorf("modifyInterfaceSlice failed to convert '%s' in to a number: %s", tree[0], err)
 	}
 
-	if index > v.Len() {
-		return fmt.Errorf("index otu of range, your setting %d where the max is %d", index, v.Len())
+	for i := 0; i < v2.Len(); i++ {
+		if i == treeInt {
+			switch v2.Index(i).Kind() {
+			case reflect.Ptr: // reflect.Map, reflect.Slice,
+				// convert pointer to non-pointer
+				//v3 := reflect.Indirect(v2)
+				log.Printf("got kind: %s", v2.Index(i).Kind())
+				log.Printf("got kind2: %T", v2.Index(i).Interface())
+				return modifyInterface(v2.Index(i).Interface(), tree[1:], value)
+			}
+			return modifyValue(v2.Index(i), tree[1:], value)
+		}
 	}
-
-	//log.Printf("Slice index kind: %+v", v.Index(index).Kind())
-	//log.Printf("Slice data before: %+v", v)
-
-	switch v.Index(index).Kind() {
-	case reflect.String:
-		v.Index(index).SetString(value)
-
-	}
-	//log.Printf("Slice data after: %+v", v)
-
-	//log.Printf("Len t: %+v", t)
-	//log.Printf("Len v: %+v", v)
-
-	//for _, e := range v.NumField() {
-	//for i := 0; i < v.Len(); i++ {
-	//if strings.EqualFold(e, tree[1:]) {
-	/*v := v.MapIndex(e)
-	switch v.Interface().(type) {
-	case int:
-		fmt.Println(e, t)
-	case []string:
-		// headers have an [][]string setup in go, generally they are all [0], so lets assume for now
-		log.Printf("map field: %+v", v.Interface().([]string))
-		return modifyInterfaceMap(v.Interface(), tree[1:], value)
-		//v.Elem().Field(i).MapIndex(e).Field(0).SetString(value)
-		//fmt.Println(e, t)
-	case string:
-		fmt.Println(e, t)
-	case bool:
-		fmt.Println(e, t)
-	default:
-		log.Printf("not found: %+v %T", v, v)
-
-	}*/
-	//}
-	//}
-	return nil
+	return fmt.Errorf("modifyInterfaceSlice slice '%s' has not been found in the resource '%T'", tree[0], v2.Interface())
 }

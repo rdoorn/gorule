@@ -1,6 +1,8 @@
 package gorule
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"log"
 	"net/http"
@@ -24,6 +26,21 @@ func createStruct(t reflect.Value) (interface{}, error) {
 		return z, nil
 	case "*url.URL":
 		z := &url.URL{}
+		return z, nil
+	case "*tls.ConnectionState":
+		z := &tls.ConnectionState{}
+		return z, nil
+	case "[]*x509.Certificate":
+		//var v []*certificate
+		//z := &x509.Certificate{}
+		//z := make([]*x509.Certificate, 1)
+		//z = append(z, &x509.Certificate{})
+		z := []*x509.Certificate{
+			&x509.Certificate{Signature: []byte("aa:bb:cc")},
+		}
+		return z, nil
+	case "[]uint8":
+		z := []uint8{}
 		return z, nil
 	default:
 		return nil, fmt.Errorf("cannot create field of type: %T", t.Interface())
