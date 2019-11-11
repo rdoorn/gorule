@@ -3,6 +3,7 @@ package gorule
 import (
 	"fmt"
 	"log"
+	"net"
 	"regexp"
 	"strconv"
 	"strings"
@@ -122,15 +123,30 @@ func (s *script) eval(p1, v, p2 string) (bool, error) {
 	case "==":
 		//log.Printf("eval str %s == %s", p1, p2)
 		return p1 == p2, nil
+
 	case "!=":
 		return p1 != p2, nil
-	case "regex":
+
+	case "match_regex":
 		//log.Printf("doing regex check of %s on %s", p2, p1)
 		re, err := regexp.Compile(p2)
 		if err != nil {
 			return false, err
 		}
 		return re.MatchString(p1), nil
+
+	case "match_net":
+		// match p1 and p2 beeing in the same network
+		_, ipnetA, err := net.ParseCIDR(p2)
+		if err != nil {
+			return false, err
+		}
+		ipB, _, err := net.ParseCIDR(addSubnet(p1))
+		if err != nil {
+			return false, err
+		}
+		return ipnetA.Contains(ipB), nil
+
 	default:
 		return false, fmt.Errorf("unknown string validator: %s", v)
 	}
@@ -263,6 +279,26 @@ func Parse(i map[string]interface{}, script []byte) error {
 			i[variable] = value
 
 			// only execute if we find this inside a runnable block
+		case "unset":
+
+			param1, err := parser.word()
+			if err != nil {
+				return fmt.Errorf("expected resouce variable as 1st parameter after '%s' at line:%d error:%s", word, parser.Line(), err)
+			}
+
+			// split and check if it IS a resource
+			resource := strings.Split(param1, ".")
+			if r, ok := i[resource[0]]; ok {
+
+				if len(resource) == 1 {
+					i[resource[0]] = nil
+					continue
+				}
+				err := deleteInterface(r, resource[1:])
+				if err != nil {
+					return fmt.Errorf("error deleting '%s' at line:%d error:%s", param1, parser.Line(), err)
+				}
+			}
 
 		// any other text needs to be seperately interpeted
 		default:
@@ -286,6 +322,14 @@ func Parse(i map[string]interface{}, script []byte) error {
 					return fmt.Errorf("expected variable as 2nd parameter after variable '%s' at line:%d error:%s", word, parser.Line(), err)
 				}
 
+				var param3 string
+				if validator == "replace_regex" {
+					param3, err = parser.word()
+					if err != nil {
+						return fmt.Errorf("expected variable as 3nd parameter after 'replace_regex' variable '%s' at line:%d error:%s", word, parser.Line(), err)
+					}
+				}
+
 				// only execute if we find this inside a runnable block
 				if run == false {
 					continue
@@ -306,6 +350,26 @@ func Parse(i map[string]interface{}, script []byte) error {
 						err := modifyInterface(r, resource[1:], param2)
 						if err != nil {
 							return fmt.Errorf("error modifing '%s' to '%s' at line:%d error:%s", param1, param2, parser.Line(), err)
+						}
+					case "replace_regex":
+						original, err := getInterface(r, resource[1:])
+						if err != nil {
+							return fmt.Errorf("replace_regex get failed '%s' at line:%d error:%s", param1, parser.Line(), err)
+						}
+						switch original.(type) {
+						case string:
+							new, err := parseRegexReplace(original.(string), param2, param3)
+							if err != nil {
+								return fmt.Errorf("replace_regex replace failed '%s' at line:%d error:%s", param2, parser.Line(), err)
+							}
+							if len(resource) == 1 {
+								i[resource[0]] = new
+								continue
+							}
+							err = modifyInterface(r, resource[1:], new)
+							if err != nil {
+								return fmt.Errorf("replace_regex modify failed '%s' to '%s' at line:%d error:%s", param1, param2, parser.Line(), err)
+							}
 						}
 					}
 				} else {
@@ -366,4 +430,23 @@ func translateVariable(i map[string]interface{}, variable string) (string, error
 		}
 	}
 	return "", fmt.Errorf("Unknown resource '%s' used in variable: %s", resource[0], variable)
+}
+
+func addSubnet(ip string) string {
+	ipv := net.ParseIP(ip)
+	if ipv == nil {
+		return ""
+	}
+	if ipv.To4() != nil {
+		return ip + "/32"
+	}
+	return ip + "/128"
+}
+
+func parseRegexReplace(variable, regexMatch, regexReplace string) (string, error) {
+	r, err := regexp.Compile(regexMatch)
+	if err != nil {
+		return "", err
+	}
+	return r.ReplaceAllString(variable, regexReplace), nil
 }

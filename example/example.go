@@ -9,9 +9,7 @@ import (
 
 func main() {
 	req, _ := http.NewRequest("GET", "http://www.tweakers.net", nil)
-
 	script := ` request.url.path = "/about" `
-
 	err := gorule.Parse(map[string]interface{}{"request": req}, []byte(script))
 	if err != nil {
 		log.Fatal(err)

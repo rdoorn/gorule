@@ -3,6 +3,7 @@ package gorule
 import (
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -187,12 +188,125 @@ var scriptTests = []scriptTest{
 		},
 		script: []byte(`
 							var testvalue 1
-							if $(request.header.referer) regex "e[x]+..ple" {
+							if $(request.header.referer) match_regex "e[x]+..ple" {
 								testvalue = 3
 							}
 				`),
 		result: map[string]interface{}{
 			"testvalue": "3",
+		},
+	},
+
+	// ip match
+	scriptTest{
+		interfaces: map[string]interface{}{
+			"request": &http.Request{
+				Header: map[string][]string{},
+			},
+			"client": "1.2.3.4",
+		},
+		script: []byte(`
+							var testvalue 1
+							if $(client) match_net "1.2.3.0/24" {
+								testvalue = 3
+							}
+				`),
+		result: map[string]interface{}{
+			"testvalue": "3",
+		},
+	},
+
+	// ip mis match
+	scriptTest{
+		interfaces: map[string]interface{}{
+			"request": &http.Request{
+				Header: map[string][]string{},
+			},
+			"client": "10.2.3.4",
+		},
+		script: []byte(`
+							var testvalue 1
+							if $(client) match_net "1.2.3.0/24" {
+								testvalue = 3
+							}
+				`),
+		result: map[string]interface{}{
+			"testvalue": "1",
+		},
+	},
+
+	// regex replace
+	scriptTest{
+		interfaces: map[string]interface{}{
+			"request": &http.Request{
+				Header: map[string][]string{},
+			},
+		},
+		script: []byte(`
+							var testvalue /user/test/site
+							testvalue replace_regex "/user/(.*)/" "/client/$1/"
+				`),
+		result: map[string]interface{}{
+			"testvalue": "/client/test/site",
+		},
+	},
+
+	// unset header
+	scriptTest{
+		interfaces: map[string]interface{}{
+			"request": &http.Request{
+				Header: map[string][]string{
+					"Server": []string{"not_a_server"},
+				},
+			},
+		},
+		script: []byte(`
+							unset request.header.server
+				`),
+		result: map[string]interface{}{
+			"request.header.server": fmt.Errorf("getInterfaceMap type 'server' has not been found in the resource 'string'"),
+		},
+	},
+
+	// unset header, but keep others
+	scriptTest{
+		interfaces: map[string]interface{}{
+			"request": &http.Request{
+				Header: map[string][]string{
+					"Server":   []string{"not_a_server"},
+					"Location": []string{"newlocation"},
+				},
+			},
+		},
+		script: []byte(`
+							unset request.header.server
+				`),
+		result: map[string]interface{}{
+			"request.header.server":   fmt.Errorf("getInterfaceMap type 'server' has not been found in the resource 'string'"),
+			"request.header.location": "newlocation",
+		},
+	},
+
+	// unset path
+	scriptTest{
+		interfaces: map[string]interface{}{
+			"request": &http.Request{
+				URL: &url.URL{
+					Scheme: "https",
+					Host:   "server1",
+					Path:   "/status",
+				},
+				Header: map[string][]string{
+					"Server":   []string{"not_a_server"},
+					"Location": []string{"newlocation"},
+				},
+			},
+		},
+		script: []byte(`
+							unset request.url.path
+				`),
+		result: map[string]interface{}{
+			"request.url.path": "",
 		},
 	},
 }
@@ -208,7 +322,7 @@ func TestScript(t *testing.T) {
 	})
 }
 
-func runTestScript(t *testing.T, i map[string]interface{}, script []byte, result map[string]interface{}) {
+/*func runTestScript(t *testing.T, i map[string]interface{}, script []byte, result map[string]interface{}) {
 	//log.Printf("....... new test .......")
 	err := Parse(i, script)
 	assert.Nil(t, err, fmt.Sprintf("script:%s execution returned error", script))
@@ -220,4 +334,26 @@ func runTestScript(t *testing.T, i map[string]interface{}, script []byte, result
 			assert.Equal(t, expected, returned, fmt.Sprintf("script:%s get result of:%s returned incorrect result, got: %+v", script, expected, returned))
 		}
 	}
+}*/
+
+func runTestScript(t *testing.T, i map[string]interface{}, script []byte, result map[string]interface{}) {
+	//log.Printf("....... new test .......")
+	err := Parse(i, script)
+	assert.Nil(t, err, fmt.Sprintf("script:%s execution returned error", script))
+	for testVariable, expected := range result {
+		testTree := strings.Split(testVariable, ".")
+		returned, err := getInterface(i[testTree[0]], testTree[1:])
+		switch expected.(type) {
+		case error:
+			if err != nil {
+				assert.EqualError(t, err, expected.(error).Error())
+				continue
+			}
+			assert.NotNil(t, err)
+		default:
+			assert.Nil(t, err, fmt.Sprintf("script:%s getInterface of:%s returned error", script, testVariable))
+			assert.Equal(t, expected, returned, fmt.Sprintf("script:%s get result of:%s returned incorrect result, got: %+v", script, expected, returned))
+		}
+	}
+
 }

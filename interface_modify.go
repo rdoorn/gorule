@@ -7,8 +7,6 @@ import (
 	"strings"
 )
 
-var uint8slice = "[]uint8"
-
 // modifyInterface gets the value of an interface based on tree
 func modifyInterface(mod interface{}, tree []string, value string) error {
 	_, _, v2, _ := getReflection(mod)
