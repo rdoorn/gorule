@@ -2,7 +2,6 @@ package gorule
 
 import (
 	"fmt"
-	"log"
 	"reflect"
 	"strconv"
 	"strings"
@@ -84,7 +83,7 @@ func deleteInterfaceStruct(mod interface{}, tree []string) error {
 	for i := 0; i < t2.NumField(); i++ {
 		field := t2.Field(i)
 		if strings.EqualFold(field.Name, tree[0]) {
-			log.Printf("deleteInterfaceStruct matching %s with %s len:%d", field.Name, tree[0], len(tree))
+			//log.Printf("deleteInterfaceStruct matching %s with %s len:%d", field.Name, tree[0], len(tree))
 			if len(tree) == 1 {
 				//log.Printf("final item in %v matching %s with %s", v.Elem().Field(i).Kind(), field.Name, tree[0])
 
@@ -114,7 +113,7 @@ func deleteInterfaceStruct(mod interface{}, tree []string) error {
 // deleteInterfaceMap gets the value of an interface based on tree of a Map
 func deleteInterfaceMap(mod interface{}, tree []string) error {
 	_, _, v2, _ := getReflection(mod)
-	log.Printf("deleteInterfaceMap mod:%T type:%+v tree:%v ", v2.Interface(), v2.Kind(), tree)
+	//log.Printf("deleteInterfaceMap mod:%T type:%+v tree:%v ", v2.Interface(), v2.Kind(), tree)
 
 	// Loop through all field of the structure
 	for _, i := range v2.MapKeys() {
